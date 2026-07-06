@@ -73,19 +73,22 @@
   #+BEGIN_SRC text
   eca-plantuml-plugin/
   ├── .eca-plugin/
-  │   └── marketplace.json    # 插件注册信息
-  ├── .mcp.json               # MCP 服务器注册
-  ├── eca.json                # ECA 配置注入（空占位）
-  ├── hooks/
-  │   ├── hooks.json          # Hook 注册（preRequest + postRequest）
-  │   ├── pre-request.sh      # L1：请求前注入渲染指令
-  │   └── post-request.sh     # L3：响应后检测残留
-  ├── skills/
-  │   └── SKILL.md            # L2：Agent 使用指南
-  ├── src/
-  │   ├── package.json        # Node.js 依赖
-  │   └── index.js            # MCP 服务器（render_plantuml 工具）
-  └── Readme.org              # 本文件
+  │   └── marketplace.json       # 插件市场注册
+  └── plugins/
+      └── plantuml-render/       # plantuml-render 插件
+          ├── eca.json           # 插件元数据
+          ├── .mcp.json          # MCP 服务器注册（render_plantuml）
+          ├── hooks/
+          │   ├── hooks.json     # Hook 注册（preRequest + postRequest）
+          │   ├── pre-request.sh # L1：请求前注入渲染指令
+          │   └── post-request.sh# L3：响应后检测残留
+          ├── skills/
+          │   └── plantuml-render/
+          │       └── SKILL.md   # L2：Agent 使用指南（agentskills.io 规范）
+          ├── src/
+          │   ├── package.json   # Node.js 依赖
+          │   └── index.js       # MCP 服务器（render_plantuml 工具）
+          └── Readme.org         # 本文件
   #+END_SRC
 
 * 配置

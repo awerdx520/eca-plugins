@@ -4,7 +4,7 @@
       "name": "plantuml-render",
       "description": "自动将对话中的 PlantUML 源码渲染为 PNG 图片（base64 内联），在 ECA 客户端直接显示图形。",
       "version": "0.1.0",
-      "path": "."
+      "source": "plugins/plantuml-render"
     }
   ]
 }

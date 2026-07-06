@@ -1,2 +1,36 @@
-node-compile-cache/
-src/node_modules/
+# ============================================
+# ECA PlantUML 插件仓库 — Git 忽略配置
+# ============================================
+
+# IDE 和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# PlantUML 渲染产物
+*.png
+!plugins/plantuml-render/src/*.png
+
+# Node.js
+node_modules/
+*.tsbuildinfo
+
+# 锁文件
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 日志
+*.log
+
+# Emacs
+*~
+\#*\#
+.\#*
+*.elc
