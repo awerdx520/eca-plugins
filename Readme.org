@@ -1,0 +1,121 @@
+#+TITLE: ECA PlantUML 渲染插件
+#+AUTHOR: ECA Plugin System
+#+DATE: 2025-07-19
+
+* 概述
+
+  这是一个 ECA (Emacs Code Assistant) 插件，自动将对话中的 PlantUML 源码转换为
+  PNG 图片，以 base64 内联方式在客户端直接渲染显示。
+
+  采用 *三层强化策略* 确保不同模型都能可靠工作：
+
+  1. =L1 preRequest Hook= — 每次 LLM 请求前自动注入渲染指令
+  2. =L2 Agent Skill= — 教模型何时调用 ~render_plantuml~ MCP 工具
+  3. =L3 postRequest Hook= — 响应完成后检测残留的 PlantUML 代码块
+
+* 工作原理
+
+  核心数据流：
+
+  #+BEGIN_SRC plantuml
+  @startuml
+  actor "LLM" as LLM
+  participant "render_plantuml\n(MCP工具)" as MCP
+  database "PlantUML CLI" as PlantUML
+  participant "ECA Client" as Client
+
+  LLM -> MCP : 调用 render_plantuml(source)
+  MCP -> PlantUML : plantuml -tpng
+  PlantUML --> MCP : PNG bytes
+  MCP --> LLM : image content (base64)
+  LLM --> Client : ChatImageContent
+  @enduml
+  #+END_SRC
+
+* 安装
+
+  在 ECA 配置文件（~/.config/eca/config.json）中添加插件源和安装声明：
+
+  #+BEGIN_SRC json
+  {
+    "plugins": {
+      "github-eca-plugins": {
+        "source": "https://github.com/your-org/eca-plugins.git"
+      },
+      "install": ["plantuml-render"]
+    }
+  }
+  #+END_SRC
+
+  或者本地开发/测试方式：直接将本目录作为插件源：
+
+  #+BEGIN_SRC json
+  {
+    "plugins": {
+      "local-dev": {
+        "source": "/home/thomas/Workspace/eca-plantuml-plugin"
+      },
+      "install": ["plantuml-render"]
+    }
+  }
+  #+END_SRC
+
+  重启 ECA 后生效。
+
+* 依赖
+
+  - ~plantuml~ CLI（需要 Java 运行环境）
+  - ~node~ >= 18（运行 MCP 服务器）
+  - ~python3~（Hook 脚本 JSON 处理）
+
+* 项目结构
+
+  #+BEGIN_SRC text
+  eca-plantuml-plugin/
+  ├── .eca-plugin/
+  │   └── marketplace.json    # 插件注册信息
+  ├── .mcp.json               # MCP 服务器注册
+  ├── eca.json                # ECA 配置注入（空占位）
+  ├── hooks/
+  │   ├── hooks.json          # Hook 注册（preRequest + postRequest）
+  │   ├── pre-request.sh      # L1：请求前注入渲染指令
+  │   └── post-request.sh     # L3：响应后检测残留
+  ├── skills/
+  │   └── SKILL.md            # L2：Agent 使用指南
+  ├── src/
+  │   ├── package.json        # Node.js 依赖
+  │   └── index.js            # MCP 服务器（render_plantuml 工具）
+  └── Readme.org              # 本文件
+  #+END_SRC
+
+* 配置
+
+  暂无外部配置项。所有行为由 Hook 脚本和 Skill 文档控制。
+
+* 故障排查
+
+  | 问题 | 原因 | 解决 |
+  |------|------|------|
+  | PlantUML 代码块未渲染为图片 | 模型未调用 ~render_plantuml~ | 检查 L1 pre-request Hook 是否生效，查看 ECA 日志 |
+  | 图片显示为空白 | PlantUML 语法错误 | 检查源码中的 PlantUML 语法，确保 ~@startuml~ 和 ~@enduml~ 正确 |
+  | MCP 服务器无法启动 | 缺少 Node.js 依赖 | 在 ~src/~ 目录执行 ~npm install~ |
+  | Hook 脚本执行失败 | 缺少执行权限 | 执行 ~chmod +x hooks/*.sh~ |
+
+* 开发
+
+  测试 MCP 服务器：
+
+  #+BEGIN_SRC bash
+  cd src && npm install
+  echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"render_plantuml","arguments":{"source":"@startuml\nA -> B\n@enduml"}}}' | node index.js
+  #+END_SRC
+
+  测试 pre-request Hook：
+
+  #+BEGIN_SRC bash
+  echo '{"prompt":"@startuml\nA -> B\n@enduml"}' | bash hooks/pre-request.sh
+  #+END_SRC
+
+* 许可证
+
+  MIT
