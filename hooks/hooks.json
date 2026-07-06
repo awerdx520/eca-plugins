@@ -1,0 +1,26 @@
+{
+  "plantuml-pre-request": {
+    "type": "preRequest",
+    "visible": false,
+    "matcher": ".*",
+    "actions": [
+      {
+        "type": "shell",
+        "file": "${plugin:root}/hooks/pre-request.sh",
+        "timeout": 5000
+      }
+    ]
+  },
+  "plantuml-post-request": {
+    "type": "postRequest",
+    "visible": true,
+    "matcher": ".*",
+    "actions": [
+      {
+        "type": "shell",
+        "file": "${plugin:root}/hooks/post-request.sh",
+        "timeout": 10000
+      }
+    ]
+  }
+}
