@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # PlantUML L1 pre-request Hook
-# 每次 LLM 请求前，在 prompt 中注入 render_plantuml 调用指令
+# 每次 LLM 请求前，在 prompt 中注入 PlantUML 画图规则
+# 注意：只注入规则说明，不注入工具调用指令（渲染由 post-request hook 处理）
 # stdin: JSON {hook_name, hook_type, chat_id, agent, prompt, workspaces, db_cache_path}
 # stdout: JSON {replacedPrompt: "增强后的prompt", ...}
 
@@ -9,11 +10,17 @@ set -euo pipefail
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('prompt',''))" 2>/dev/null || echo "")
 
-# 要注入的 PlantUML 渲染指令
-INJECTION=$'\n\n---\n## PlantUML 渲染指令（ECA 自动注入）\n\n当你输出 PlantUML 图形时，请遵守以下规则：\n\n1. **禁止只输出 PlantUML 代码块。** 必须调用 `render_plantuml` MCP 工具将源码转换为图片。\n2. 对于每个 `@startuml...@enduml` 块，按以下步骤操作：\n   - 第一步：输出 PlantUML 源码作为代码块（供文本查看）\n   - 第二步：**立即调用 `render_plantuml` 工具**，将源码作为 `source` 参数传入\n3. 工具返回 PNG 图片后，图片会自动在对话中渲染显示。\n4. 如果工具调用失败（如语法错误），提示用户修复 PlantUML 源码。\n\n---'
+# 从 rules.md 读取 PlantUML 画图规则（不含工具调用指令）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RULES_FILE="${SCRIPT_DIR}/rules.md"
+if [ -f "$RULES_FILE" ]; then
+  INJECTION=$(cat "$RULES_FILE")
+else
+  INJECTION=""
+fi
 
 # 检查 prompt 是否已包含渲染指令（避免重复注入）
-if echo "$PROMPT" | grep -q "render_plantuml"; then
+if echo "$PROMPT" | grep -q "PlantUML 图形绘制规则（ECA 插件自动注入）"; then
   # 已含指令，不重复注入
   echo "$INPUT" | python3 -c "
 import sys, json

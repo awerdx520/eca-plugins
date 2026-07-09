@@ -2,7 +2,7 @@
   "mcpServers": {
     "plantuml-render": {
       "command": "node",
-      "args": ["${plugin:root}/src/index.js"]
+      "args": ["${plugin:root}/src/index.mjs"]
     }
   }
 }

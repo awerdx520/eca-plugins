@@ -4,33 +4,24 @@
 
 * 概述
 
-  这是一个 ECA (Emacs Code Assistant) 插件，自动将对话中的 PlantUML 源码转换为
-  PNG 图片，以 base64 内联方式在客户端直接渲染显示。
+  这是一个 ECA (Emacs Code Assistant) 插件，通过 MCP 服务器提供 =render_plantuml=
+  工具，将 PlantUML 源码渲染为 PNG 图片（base64 内联），在客户端直接显示。
 
-  采用 *三层强化策略* 确保不同模型都能可靠工作：
+  采用 *二层架构* ：
 
-  1. =L1 preRequest Hook= — 每次 LLM 请求前自动注入渲染指令
-  2. =L2 Agent Skill= — 教模型何时调用 ~render_plantuml~ MCP 工具
-  3. =L3 postRequest Hook= — 响应完成后检测残留的 PlantUML 代码块
+  1. =L1 preRequest Hook= — 每次 LLM 请求前自动注入画图规则（PlantUML 语法、禁止行为、自检清单）
+  2. =MCP 服务器= — 提供 =render_plantuml= 工具，模型输出 =@startuml= 块后主动调用工具渲染
 
 * 工作原理
 
-  核心数据流：
+  PlantUML 源码 → pre-request hook 注入画图规则 → LLM 输出 @startuml 块
+  → LLM 调用 render_plantuml 工具 → MCP 服务器执行 plantuml -tpng
+  → base64 PNG data URI 返回给 LLM → 嵌入回复展示。
 
-  #+BEGIN_SRC plantuml
-  @startuml
-  actor "LLM" as LLM
-  participant "render_plantuml\n(MCP工具)" as MCP
-  database "PlantUML CLI" as PlantUML
-  participant "ECA Client" as Client
+  采用 *二层架构* ：
 
-  LLM -> MCP : 调用 render_plantuml(source)
-  MCP -> PlantUML : plantuml -tpng
-  PlantUML --> MCP : PNG bytes
-  MCP --> LLM : image content (base64)
-  LLM --> Client : ChatImageContent
-  @enduml
-  #+END_SRC
+  1. =L1 preRequest Hook= — 每次 LLM 请求前注入画图规则和语法自检清单
+  2. =MCP 服务器= — 提供 =render_plantuml= 工具，模型主动调用完成渲染
 
 * 安装
 
@@ -65,58 +56,48 @@
 * 依赖
 
   - ~plantuml~ CLI（需要 Java 运行环境）
-  - ~node~ >= 18（运行 MCP 服务器）
   - ~python3~（Hook 脚本 JSON 处理）
 
 * 项目结构
 
   #+BEGIN_SRC text
-  eca-plantuml-plugin/
-  ├── .eca-plugin/
-  │   └── marketplace.json       # 插件市场注册
-  └── plugins/
-      └── plantuml-render/       # plantuml-render 插件
-          ├── eca.json           # 插件元数据
-          ├── .mcp.json          # MCP 服务器注册（render_plantuml）
-          ├── hooks/
-          │   ├── hooks.json     # Hook 注册（preRequest + postRequest）
-          │   ├── pre-request.sh # L1：请求前注入渲染指令
-          │   └── post-request.sh# L3：响应后检测残留
-          ├── skills/
-          │   └── plantuml-render/
-          │       └── SKILL.md   # L2：Agent 使用指南（agentskills.io 规范）
-          ├── src/
-          │   ├── package.json   # Node.js 依赖
-          │   └── index.js       # MCP 服务器（render_plantuml 工具）
-          └── Readme.org         # 本文件
+  plantuml-render/
+  ├── eca.json           # 插件元数据
+  ├── package.json       # Node.js 依赖声明
+  ├── src/
+  │   └── index.mjs      # MCP 服务器实现（render_plantuml 工具）
+  ├── hooks/
+  │   ├── hooks.json     # Hook 注册（仅 preRequest）
+  │   ├── pre-request.sh # L1：请求前注入画图规则
+  │   └── rules.md        # 画图规则文本（由 pre-request.sh 读取）
+  └── Readme.org         # 本文件
   #+END_SRC
 
 * 配置
 
-  暂无外部配置项。所有行为由 Hook 脚本和 Skill 文档控制。
+  暂无外部配置项。所有行为由 Hook 脚本控制。
 
 * 故障排查
 
   | 问题 | 原因 | 解决 |
   |------|------|------|
-  | PlantUML 代码块未渲染为图片 | 模型未调用 ~render_plantuml~ | 检查 L1 pre-request Hook 是否生效，查看 ECA 日志 |
+  | PlantUML 代码块未渲染为图片 | render_plantuml 工具未被调用 | 检查 package.json 是否正确，查看 ECA 日志中 MCP 服务器是否启动成功 |
   | 图片显示为空白 | PlantUML 语法错误 | 检查源码中的 PlantUML 语法，确保 ~@startuml~ 和 ~@enduml~ 正确 |
-  | MCP 服务器无法启动 | 缺少 Node.js 依赖 | 在 ~src/~ 目录执行 ~npm install~ |
-  | Hook 脚本执行失败 | 缺少执行权限 | 执行 ~chmod +x hooks/*.sh~ |
+  | MCP 服务器启动失败 | Node.js 依赖未安装 | 在插件目录执行 ~npm install~ |
+  | plantuml 命令不可用 | 未安装 PlantUML | 安装 ~plantuml~ （需要 Java 运行环境） |
 
 * 开发
-
-  测试 MCP 服务器：
-
-  #+BEGIN_SRC bash
-  cd src && npm install
-  echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"render_plantuml","arguments":{"source":"@startuml\nA -> B\n@enduml"}}}' | node index.js
-  #+END_SRC
 
   测试 pre-request Hook：
 
   #+BEGIN_SRC bash
   echo '{"prompt":"@startuml\nA -> B\n@enduml"}' | bash hooks/pre-request.sh
+  #+END_SRC
+
+  测试 MCP 服务器：
+
+  #+BEGIN_SRC bash
+  node src/index.mjs
   #+END_SRC
 
 * 许可证

@@ -1,5 +1,5 @@
 {
   "name": "plantuml-render",
   "version": "0.1.0",
-  "description": "自动将对话中的 PlantUML 源码渲染为 PNG 图片（base64 内联），在 ECA 客户端直接显示图形。基于 MCP 服务器 render_plantuml 工具，配合 pre-request/post-request hooks 和 agent skill 实现三层强化渲染策略。"
+  "description": "提供 render_plantuml MCP 工具，将 PlantUML 源码渲染为 PNG 图片（base64 内联）。pre-request hook 注入画图规则，模型主动调用工具完成渲染。"
 }
