@@ -36,3 +36,20 @@
 - 删除 `hooks/post-request.sh`，从 `hooks.json` 移除 post-request 注册
 - 更新 `rules.md` 的「输出后处理」段为工具调用指引
 - config.json 中 `toolCall.approval.allow` 的 `"plantuml-render": {}` 无需修改（MCP 服务器名匹配）
+
+---
+
+## 2026-07-15 — 新增 pandoc-convert 插件，纯 MCP 工具型架构
+
+**决策**：新增 pandoc-convert 插件，提供 pandoc_convert 和 pandoc_list_formats 两个 MCP 工具，采用纯 MCP 工具型架构（无 pre-request hook）。
+
+**理由**：
+- pandoc 是纯工具型需求——模型按需调用文档转换，无需持续注入规则
+- 与 plantuml-render 相比：PlantUML 需要注入画图规则 + 语法自检清单（pre-request hook），pandoc 不需要
+- 用户内容通过临时文件传递（writeFile → spawn pandoc → readFile），避免 shell 注入
+- pandoc 3.6.1 已就绪，支持 46 种输入 / 67 种输出格式
+
+**影响**：
+- 新增 5 个文件（eca.json、.mcp.json、package.json、src/index.mjs、Readme.org）
+- 更新 README.md 插件表格和 CHANGELOG.md
+- 无需 hooks/ 目录（纯工具型插件）

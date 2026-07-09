@@ -1,5 +1,15 @@
 # 变更日志
 
+## [0.3.0] — 2026-07-15
+
+### 新增
+
+- **pandoc-convert 插件** — 文档格式转换 MCP 服务器
+  - 提供 `pandoc_convert` 工具（Markdown ↔ Org ↔ HTML ↔ LaTeX ↔ DOCX 等格式互转）
+  - 提供 `pandoc_list_formats` 工具（列出 pandoc 支持的 46 种输入 / 67 种输出格式）
+  - 纯 MCP 工具型架构，通过临时文件传递内容，避免 shell 注入
+  - 支持 pandoc 3.6.1+
+
 ## [0.2.0] — 2025-07-21
 
 ### 变更

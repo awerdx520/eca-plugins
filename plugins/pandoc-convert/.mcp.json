@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pandoc-convert": {
+      "command": "node",
+      "args": ["${plugin:root}/src/index.mjs"]
+    }
+  }
+}

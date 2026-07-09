@@ -1,0 +1,5 @@
+{
+  "name": "pandoc-convert",
+  "version": "0.1.0",
+  "description": "提供 pandoc_convert 和 pandoc_list_formats MCP 工具，支持文档格式转换（Markdown ↔ Org ↔ HTML 等）"
+}

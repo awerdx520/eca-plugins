@@ -1,0 +1,9 @@
+{
+  "name": "pandoc-convert-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MCP 服务器，提供 pandoc_convert 和 pandoc_list_formats 工具",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

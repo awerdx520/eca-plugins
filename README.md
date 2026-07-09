@@ -7,6 +7,7 @@ PlantUML 渲染插件集，为 ECA（Editor Code Assistant）提供 PlantUML 图
 | 插件 | 版本 | 说明 |
 |------|------|------|
 | [plantuml-render](./plugins/plantuml-render/Readme.org) | 0.1.0 | 自动将对话中的 PlantUML 源码渲染为 PNG 图片（base64 内联），在 ECA 客户端直接显示图形 |
+| [pandoc-convert](./plugins/pandoc-convert/Readme.org) | 0.1.0 | 通过 pandoc 实现文档格式互转（Markdown、Org、HTML、LaTeX、DOCX 等），提供 pandoc_convert 和 pandoc_list_formats MCP 工具 |
 
 ## 安装
 

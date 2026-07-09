@@ -1,0 +1,101 @@
+#+TITLE: ECA Pandoc 文档转换插件
+#+AUTHOR: ECA Plugin System
+#+DATE: 2026-07-15
+
+* 概述
+
+  这是一个 ECA (Emacs Code Assistant) 插件，通过 MCP 服务器提供以下工具：
+
+  - =pandoc_convert= — 文档格式转换（Markdown ↔ Org ↔ HTML ↔ LaTeX ↔ DOCX 等）
+  - =pandoc_list_formats= — 列出 pandoc 支持的全部输入/输出格式
+
+  采用 *纯 MCP 工具型* 架构，无需 pre-request hook。模型按需调用工具完成转换。
+
+* 工作原理
+
+  源文本 → LLM 调用 =pandoc_convert= 工具 → MCP 服务器通过临时文件调用 pandoc CLI
+  → 返回转换后文本 → LLM 嵌入回复。
+
+  =pandoc_list_formats= 工具帮助 LLM 了解可用的输入/输出格式，避免无效转换请求。
+
+* 安装
+
+  在 ECA 配置文件（~/.config/eca/config.json）中添加插件源和安装声明：
+
+  #+BEGIN_SRC json
+  {
+    "plugins": {
+      "github-eca-plugins": {
+        "source": "https://github.com/your-org/eca-plugins.git"
+      },
+      "install": ["pandoc-convert"]
+    }
+  }
+  #+END_SRC
+
+  本地开发方式：
+
+  #+BEGIN_SRC json
+  {
+    "plugins": {
+      "local-dev": {
+        "source": "/home/thomas/Workspace/eca-plugins"
+      },
+      "install": ["pandoc-convert"]
+    }
+  }
+  #+END_SRC
+
+  重启 ECA 后生效。
+
+* 依赖
+
+  - =pandoc= CLI（系统级安装）
+  - Node.js 运行时
+  - （可选）LaTeX 引擎（=pdflatex= / =xelatex=）或 =wkhtmltopdf= — 仅在需要输出 PDF 时安装
+
+* 项目结构
+
+  #+BEGIN_SRC text
+  pandoc-convert/
+  ├── eca.json           # 插件元数据
+  ├── .mcp.json          # MCP 服务器声明
+  ├── package.json       # Node.js 依赖声明
+  ├── src/
+  │   └── index.mjs      # MCP 服务器实现
+  └── Readme.org         # 本文件
+  #+END_SRC
+
+* 工具说明
+
+  | 工具 | 参数 | 说明 |
+  |------+------+------|
+  | =pandoc_convert= | =content= (源文本), =from= (源格式), =to= (目标格式), =options= (可选 CLI 参数数组) | 执行文档格式转换 |
+  | =pandoc_list_formats= | 无 | 列出 pandoc 支持的全部输入/输出格式 |
+
+  =from= / =to= 参数支持 pandoc 识别的所有格式名，如 =markdown=、=org=、=html=、=latex=、=docx=、=rst= 等。
+
+* 安全
+
+  - 用户内容通过临时文件传递，不经过 shell 字符串拼接
+  - 遵循 ECA 密钥保护规则，不暴露文件路径
+
+* 故障排查
+
+  | 问题 | 原因 | 解决 |
+  |------+------+------|
+  | MCP 服务器启动失败 | Node.js 依赖未安装 | 在插件目录执行 =npm install= |
+  | pandoc 命令不可用 | 未安装 pandoc | 安装 =pandoc= |
+  | 转换返回错误 | 格式名无效 | 先用 =pandoc_list_formats= 查询有效格式 |
+
+* 开发
+
+  测试 MCP 服务器：
+
+  #+BEGIN_SRC bash
+  npm install && node src/index.mjs
+  #+END_SRC
+
+* 许可证
+
+  MIT
