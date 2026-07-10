@@ -136,7 +136,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `PlantUML 渲染成功。使用以下 data URI 嵌入图片:\n\n![PlantUML](${result.dataUri})`,
+          text: "PlantUML 渲染成功。图片已通过 image 内容返回。",
         },
         {
           type: "image",

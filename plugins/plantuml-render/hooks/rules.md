@@ -42,7 +42,7 @@
 ### 输出后处理
 
 输出 `@startuml...@enduml` 代码块后，**调用 `render_plantuml` 工具**渲染为图片。
-工具接受 `source` 参数（完整的 PlantUML 源码），返回 base64 PNG data URI。
-将返回的 data URI 以 `![PlantUML](data-uri)` 格式嵌入回复中展示图片。
+工具接受 `source` 参数（完整的 PlantUML 源码），返回 PNG 图片。
+图片由客户端自动渲染展示，无需在回复中手动嵌入 data URI。
 
 ---
