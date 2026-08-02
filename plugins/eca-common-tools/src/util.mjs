@@ -81,6 +81,71 @@ export const utilTools = [
       required: ["pattern", "text"],
     },
   },
+  {
+    name: "test_result_summarize",
+    description:
+      "解析测试命令输出，自动识别框架（pytest/jest/go test），只返回失败用例与错误摘要（默认最多 10 个，含文件:行:列）。输入完整测试输出，返回结构化摘要；无失败时返回通过确认。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        output: {
+          type: "string",
+          description: "测试命令的完整输出",
+        },
+        framework: {
+          type: "string",
+          description: "可选。框架指定：'auto'（自动探测，默认）|'pytest'|'jest'|'go'",
+        },
+        max_failures: {
+          type: "number",
+          description: "可选。最多返回的失败用例数（默认 10）",
+        },
+      },
+      required: ["output"],
+    },
+  },
+  {
+    name: "stack_trace_analyze",
+    description:
+      "解析多语言堆栈跟踪（Python/JS/Java/Go），返回错误类型、调用链摘要与首个项目内文件位置。传入堆栈文本，返回结构化分析；无法识别格式时返回错误。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        trace: {
+          type: "string",
+          description: "堆栈跟踪文本",
+        },
+        project_root: {
+          type: "string",
+          description: "可选。项目根目录路径，用于判断哪些帧属于项目文件",
+        },
+      },
+      required: ["trace"],
+    },
+  },
+  {
+    name: "code_block_extract",
+    description:
+      "从文本中提取 ``` 代码块。支持按语言过滤、按序号选取单个代码块；检测到未闭合代码块（``` 数量为奇数）时输出警告。传入含代码块的文本，返回代码块列表或指定单个。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description: "包含代码块的文本",
+        },
+        language: {
+          type: "string",
+          description: "可选。只提取指定语言代码块，如 'javascript'/'python'",
+        },
+        index: {
+          type: "number",
+          description: "可选。只提取第 N 个代码块（1-based）",
+        },
+      },
+      required: ["text"],
+    },
+  },
 ];
 
 // ── json_format 实现 ──
@@ -280,6 +345,275 @@ function formatRegexResult(result) {
   return lines.join("\n");
 }
 
+// ── test_result_summarize 实现 ──
+
+/** 自动探测测试框架：pytest / jest / go test */
+function detectTestFramework(output) {
+  if (/=== FAILURES ===|^FAILED |_pytest\.outcomes|(\d+) passed/.test(output)) return "pytest";
+  if (/Test Suites:|✓|✕|●|PASS \/ FAIL/.test(output) && /Tests:/.test(output)) return "jest";
+  if (/^--- FAIL:|\bFAIL\s+$|^ok\s+\S+\s+\d/.test(output)) return "go";
+  return null;
+}
+
+/**
+ * 解析 pytest 输出：提取 FAILURES 节中的失败用例
+ */
+function summarizePytest(output, maxFailures) {
+  const failures = [];
+  // 匹配 "____ test_name ____" 失败节标题（下划线包裹）
+  const sectionRe = /_{4,}\s*(.+?)\s*_{4,}/g;
+  const lines = output.split("\n");
+  const sections = [];
+  let m;
+  while ((m = sectionRe.exec(output)) !== null) {
+    sections.push({ title: m[1].trim() });
+  }
+  // 也匹配 "FAILED path::test - message" 汇总行
+  const failedLines = [];
+  for (const line of lines) {
+    if (/^FAILED\s/.test(line)) failedLines.push(line.trim());
+  }
+
+  for (const s of sections.slice(0, maxFailures)) {
+    failures.push({ title: s.title, location: "", detail: "" });
+  }
+  // 若只有 FAILED 汇总行（pytest -q 模式），用它们
+  if (failures.length === 0 && failedLines.length > 0) {
+    for (const line of failedLines.slice(0, maxFailures)) {
+      const m2 = line.match(/^FAILED\s+(\S+)\s*-\s*(.*)$/);
+      failures.push({ title: m2 ? m2[1] : line, location: m2 ? m2[1] : "", detail: m2 ? m2[2] : "" });
+    }
+  }
+  return failures;
+}
+
+/**
+ * 解析 jest 输出：提取 ● 失败节点
+ */
+function summarizeJest(output, maxFailures) {
+  const failures = [];
+  const lines = output.split("\n");
+  let current = null;
+  for (const line of lines) {
+    const failMatch = line.match(/^\s*●\s+(.+)$/); // 容忍 jest 输出中 ● 前的缩进
+    if (failMatch) {
+      current = { title: failMatch[1].trim(), detail: "" };
+      failures.push(current);
+      if (failures.length >= maxFailures) break;
+      continue;
+    }
+    if (current && /^\s{2,}(at |expect|Error)/.test(line) && !current.detail) {
+      current.detail = line.trim();
+    }
+  }
+  return failures;
+}
+
+/**
+ * 解析 go test 输出：提取 --- FAIL 节
+ */
+function summarizeGo(output, maxFailures) {
+  const failures = [];
+  const lines = output.split("\n");
+  let current = null;
+  for (const line of lines) {
+    const failMatch = line.match(/^--- FAIL:\s*(.+?)\s*\((.+)\)$/);
+    if (failMatch) {
+      current = { title: failMatch[1].trim(), location: failMatch[2], detail: "" };
+      failures.push(current);
+      if (failures.length >= maxFailures) break;
+      continue;
+    }
+    if (current && /^\s+(.*\.go:\d+)/.test(line) && !current.detail) {
+      current.detail = line.trim();
+    }
+  }
+  return failures;
+}
+
+/**
+ * 汇总测试输出为失败摘要。framework 可指定或自动探测。
+ */
+function summarizeTestOutput(output, framework, maxFailures) {
+  const limit = typeof maxFailures === "number" && maxFailures > 0 ? maxFailures : 10;
+  const detected = framework && framework !== "auto" ? framework : detectTestFramework(output);
+  if (!detected) {
+    return { success: false, error: "无法识别的测试输出格式（支持 pytest/jest/go test）" };
+  }
+
+  let failures = [];
+  if (detected === "pytest") {
+    failures = summarizePytest(output, limit);
+  } else if (detected === "jest") {
+    failures = summarizeJest(output, limit);
+  } else if (detected === "go") {
+    failures = summarizeGo(output, limit);
+  }
+
+  if (failures.length === 0) {
+    return { success: true, content: "✅ 全部通过（未检测到失败）" };
+  }
+
+  const lines = [`框架: ${detected}`, `失败用例 ${failures.length} 个:`];
+  failures.forEach((f, i) => {
+    lines.push(`${i + 1}. ${f.title}`);
+    if (f.location) lines.push(`   位置: ${f.location}`);
+    if (f.detail) lines.push(`   详情: ${f.detail}`);
+  });
+  if (failures.length >= limit) lines.push(`…（仅显示前 ${limit} 个，共 ${failures.length} 个失败）`);
+  return { success: true, content: lines.join("\n") };
+}
+
+// ── stack_trace_analyze 实现 ──
+
+/** 系统/依赖目录（判断"项目文件"用排除法） */
+const SYSTEM_DIRS = ["node_modules", "venv", "site-packages", "usr/lib", "go/src", "dist-packages", ".cache"];
+
+/** 判断是否为项目文件路径（不在系统目录中） */
+function isProjectFile(path, projectRoot) {
+  if (!path) return false;
+  if (projectRoot && path.startsWith(projectRoot)) return true;
+  return !SYSTEM_DIRS.some((d) => path.includes(d));
+}
+
+/** 自动探测堆栈语言 */
+function detectTraceLanguage(trace) {
+  if (/Traceback \(most recent call last\)|File ".*", line \d+/.test(trace)) return "python";
+  if (/at .+ \(.+:\d+:\d+\)|at .+:\d+:\d+/.test(trace)) return "js";
+  if (/^\s*at [\w.]+\.\w+\(.+\.java:\d+\)/m.test(trace)) return "java";
+  if (/goroutine \d+ \[running\]/.test(trace)) return "go";
+  return null;
+}
+
+/**
+ * 解析堆栈为结构化摘要：错误类型 + 调用链 + 首个项目文件位置。
+ */
+function analyzeStackTrace(trace, projectRoot) {
+  const lines = trace.split("\n").map((l) => l.trimEnd());
+  if (!trace.trim()) return { success: false, error: "堆栈为空" };
+
+  const lang = detectTraceLanguage(trace);
+  if (!lang) return { success: false, error: "无法识别的堆栈格式（支持 Python/JS/Java/Go）" };
+
+  // 错误类型 + 消息（首行）
+  const firstLine = lines[0];
+  let errorType = "";
+  let errorMessage = "";
+  if (lang === "python") {
+    const lastLine = lines[lines.length - 1];
+    errorType = lastLine.split(":")[0]?.trim() || firstLine.trim();
+    errorMessage = lastLine.includes(":") ? lastLine.slice(lastLine.indexOf(":") + 1).trim() : "";
+  } else if (lang === "js") {
+    const errMatch = firstLine.match(/^(\w+Error):\s*(.*)$/);
+    if (errMatch) { errorType = errMatch[1]; errorMessage = errMatch[2]; }
+  } else if (lang === "java") {
+    const errMatch = firstLine.match(/^([\w.]+Exception):\s*(.*)$/);
+    if (errMatch) { errorType = errMatch[1]; errorMessage = errMatch[2]; }
+  } else if (lang === "go") {
+    const panicMatch = lines.find((l) => /^panic:|^fatal error:/.test(l));
+    if (panicMatch) { errorType = panicMatch.split(":")[0]; errorMessage = panicMatch.slice(panicMatch.indexOf(":") + 1).trim(); }
+  }
+
+  // 提取调用链帧
+  const frames = [];
+  for (const line of lines) {
+    let loc = null;
+    if (lang === "python") {
+      const m = line.match(/File "([^"]+)", line (\d+)/);
+      if (m) loc = { file: m[1], line: m[2] };
+    } else if (lang === "js") {
+      const m = line.match(/at .*?\(?([^()\s]+):(\d+):(\d+)\)?$/); // 非贪婪：避免 .* 吃掉路径导致捕获残缺
+      if (m) loc = { file: m[1], line: m[2], col: m[3] };
+      else {
+        const m2 = line.match(/at (.+):(\d+):(\d+)$/);
+        if (m2) loc = { file: m2[1], line: m2[2], col: m2[3] };
+      }
+    } else if (lang === "java") {
+      const m = line.match(/at ([\w.]+)\((\w+\.java):(\d+)\)/);
+      if (m) loc = { file: m[2], line: m[3] };
+    } else if (lang === "go") {
+      const m = line.match(/(.+\.go):(\d+)/);
+      if (m && !line.includes("goroutine")) loc = { file: m[1], line: m[2] };
+    }
+    if (loc && loc.file !== "evalmachine.<anonymous>") frames.push(loc);
+  }
+
+  // 首个项目文件帧
+  let firstProject = null;
+  for (const f of frames) {
+    if (isProjectFile(f.file, projectRoot)) { firstProject = f; break; }
+  }
+
+  const out = [];
+  out.push(`语言: ${lang}`);
+  if (errorType) out.push(`错误类型: ${errorType}`);
+  if (errorMessage) out.push(`错误消息: ${errorMessage}`);
+  out.push(`调用链 (${Math.min(frames.length, 20)} 帧):`);
+  for (const f of frames.slice(0, 20)) {
+    out.push(`  ${f.file}:${f.line}${f.col ? ":" + f.col : ""}`);
+  }
+  if (firstProject) {
+    out.push(`🎯 首个项目内位置: ${firstProject.file}:${firstProject.line}`);
+  } else {
+    out.push("（未找到项目内帧，堆栈可能全部来自依赖/系统代码）");
+  }
+  return { success: true, content: out.join("\n") };
+}
+
+// ── code_block_extract 实现 ──
+
+/**
+ * 从文本中提取代码块。返回 { blocks, unclosed }。
+ */
+function extractCodeBlocks(text) {
+  const fenceRe = /```([\w+-]*)\n?([\s\S]*?)```/g;
+  const blocks = [];
+  let m;
+  while ((m = fenceRe.exec(text)) !== null) {
+    blocks.push({ language: (m[1] || "").trim(), content: m[2] });
+  }
+  // 未闭合检测：统计 ``` 出现次数（含未匹配的）
+  const fenceCount = (text.match(/```/g) || []).length;
+  const unclosed = fenceCount % 2 === 1;
+  return { blocks, unclosed };
+}
+
+/**
+ * 格式化代码块提取结果。支持语言过滤与序号选取。
+ */
+function formatCodeBlocks(text, language, index) {
+  const { blocks, unclosed } = extractCodeBlocks(text);
+
+  const warn = unclosed ? "\n⚠️ 检测到未闭合代码块（LLM 输出可能被截断）" : "";
+
+  // 语言过滤
+  let filtered = blocks;
+  if (language) {
+    filtered = blocks.filter((b) => b.language === language || b.language === "");
+  }
+
+  // 序号选取（1-based）
+  if (typeof index === "number") {
+    if (index < 1 || index > filtered.length) {
+      return { success: false, error: `index 超出范围：共 ${filtered.length} 个代码块，请求第 ${index} 个` };
+    }
+    const b = filtered[index - 1];
+    return { success: true, content: `语言: ${b.language || "（未标注）"}\n\n${b.content}${warn}` };
+  }
+
+  if (filtered.length === 0) {
+    return { success: true, content: `未找到代码块${language ? `（语言: ${language}）` : ""}${warn}` };
+  }
+
+  const out = [`共 ${filtered.length} 个代码块:`];
+  filtered.forEach((b, i) => {
+    out.push(`\n--- 代码块 ${i + 1} (${b.language || "未标注语言"}) ---`);
+    out.push(b.content);
+  });
+  out.push(warn);
+  return { success: true, content: out.join("\n") };
+}
+
 // ── 工具调用分发 ──
 
 /**
@@ -342,6 +676,60 @@ export async function handleUtilCall(name, args) {
       const result = await runRegexInSubprocess(pattern, flags || "", text);
       if (result.success) {
         return { content: [{ type: "text", text: formatRegexResult(result) }] };
+      }
+      return {
+        content: [{ type: "text", text: `⚠️ ${result.error}` }],
+        isError: true,
+      };
+    }
+
+    case "test_result_summarize": {
+      const { output, framework, max_failures } = args || {};
+      if (typeof output !== "string" || !output) {
+        return {
+          content: [{ type: "text", text: "缺少必需参数 output" }],
+          isError: true,
+        };
+      }
+      const result = summarizeTestOutput(output, framework, max_failures);
+      if (result.success) {
+        return { content: [{ type: "text", text: result.content }] };
+      }
+      return {
+        content: [{ type: "text", text: `⚠️ ${result.error}` }],
+        isError: true,
+      };
+    }
+
+    case "stack_trace_analyze": {
+      const { trace, project_root } = args || {};
+      if (typeof trace !== "string" || !trace) {
+        return {
+          content: [{ type: "text", text: "缺少必需参数 trace" }],
+          isError: true,
+        };
+      }
+      const result = analyzeStackTrace(trace, project_root);
+      if (result.success) {
+        return { content: [{ type: "text", text: result.content }] };
+      }
+      return {
+        content: [{ type: "text", text: `⚠️ ${result.error}` }],
+        isError: true,
+      };
+    }
+
+    case "code_block_extract": {
+      const { text, language, index } = args || {};
+      if (typeof text !== "string") {
+        return {
+          content: [{ type: "text", text: "缺少必需参数 text" }],
+          isError: true,
+        };
+      }
+      const result = formatCodeBlocks(text, language, index);
+      if (result.success) {
+        return { content: [{ type: "text", text: result.content }] };
       }
       return {
         content: [{ type: "text", text: `⚠️ ${result.error}` }],

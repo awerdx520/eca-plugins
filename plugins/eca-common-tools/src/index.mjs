@@ -37,6 +37,9 @@ const HANDLERS = {
   json_format: handleUtilCall,
   csv_to_markdown: handleUtilCall,
   regex_test: handleUtilCall,
+  test_result_summarize: handleUtilCall,
+  stack_trace_analyze: handleUtilCall,
+  code_block_extract: handleUtilCall,
 };
 
 // ============ MCP 服务器 ============

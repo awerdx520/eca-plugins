@@ -6,7 +6,7 @@
 
 ### 画图规则
 
-当需要表达架构、流程、数据流、组件关系等视觉化内容时，**必须**使用 PlantUML 语法输出 `@startuml...@enduml` 代码块（禁止 ASCII 手绘、Mermaid.js 等替代方案）。
+当需要表达架构、流程、数据流、组件关系等视觉化内容时，**必须**直接调用 `render_plantuml` MCP 工具生成图片（禁止 ASCII 手绘、Mermaid.js 等替代方案）。PlantUML 源码（`@startuml...@enduml`）仅作为工具参数传递，**禁止**在回复正文中输出源码文本。
 
 ### 语法速查
 
@@ -31,7 +31,7 @@
 
 ### 语法自检清单
 
-输出 `@startuml...@enduml` 代码块前，检查以下项：
+调用 `render_plantuml` 工具前，检查以下项：
 
 1. `@startuml` 和 `@enduml` 必须成对出现
 2. 箭头语法：`-->`（实线）、`..>`（虚线）、`->`（时序图），不要混用不存在的箭头
@@ -41,7 +41,7 @@
 
 ### 输出后处理
 
-输出 `@startuml...@enduml` 代码块后，**调用 `render_plantuml` 工具**渲染为图片。
+调用 `render_plantuml` 工具渲染为图片，**不要**先在回复正文中输出 `@startuml...@enduml` 源码文本（源码仅作为工具参数传递）。
 工具接受 `source` 参数（完整的 PlantUML 源码）与可选 `background` 参数，返回 SVG 图片（无损矢量格式，可无限缩放）。
 **调用时默认传 `background: "#ffffff"`**（白色背景，保证暗色主题下黑字可读）；用户明确要求透明背景时才传 `"none"`。
 图片由客户端自动渲染展示，无需在回复中手动嵌入 data URI。

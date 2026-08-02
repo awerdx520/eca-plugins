@@ -6,7 +6,7 @@ ECA（Editor Code Assistant）插件集，提供统一的工具能力：PlantUML
 
 | 插件 | 版本 | 说明 |
 |------|------|------|
-| [eca-common-tools](./plugins/eca-common-tools/Readme.org) | 0.7.0 | 统一工具集：render_plantuml（PlantUML SVG 无损渲染，支持 background 背景色参数）、pandoc_convert 与 pandoc_list_formats（文档格式转换），一个 MCP 服务器包含全部工具；新增 plantuml_validate（语法校验）、json_format（JSON 格式化）、csv_to_markdown（CSV 转表格）、regex_test（正则测试） |
+| [eca-common-tools](./plugins/eca-common-tools/Readme.org) | 0.8.0 | 统一工具集：render_plantuml（PlantUML SVG 无损渲染，支持 background 背景色参数）、pandoc_convert 与 pandoc_list_formats（文档格式转换），一个 MCP 服务器包含全部工具；新增 plantuml_validate（语法校验）、json_format（JSON 格式化）、csv_to_markdown（CSV 转表格）、regex_test（正则测试）；新增 test_result_summarize（测试输出摘要）、stack_trace_analyze（堆栈解析）、code_block_extract（代码块提取） |
 
 ## 安装
 
