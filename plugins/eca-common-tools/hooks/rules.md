@@ -2,7 +2,7 @@
 
 ## PlantUML 图形绘制规则（ECA 插件自动注入）
 
-本规则由 plantuml-render 插件在每次 LLM 请求前自动注入。
+本规则由 eca-common-tools 插件在每次 LLM 请求前自动注入。
 
 ### 画图规则
 
@@ -42,7 +42,8 @@
 ### 输出后处理
 
 输出 `@startuml...@enduml` 代码块后，**调用 `render_plantuml` 工具**渲染为图片。
-工具接受 `source` 参数（完整的 PlantUML 源码），返回 SVG 图片（无损矢量格式，可无限缩放）。
+工具接受 `source` 参数（完整的 PlantUML 源码）与可选 `background` 参数，返回 SVG 图片（无损矢量格式，可无限缩放）。
+**调用时默认传 `background: "#ffffff"`**（白色背景，保证暗色主题下黑字可读）；用户明确要求透明背景时才传 `"none"`。
 图片由客户端自动渲染展示，无需在回复中手动嵌入 data URI。
 
 ---

@@ -1,5 +1,15 @@
 # 变更日志
 
+## [0.6.1] — 2026-08-02
+
+### 修复
+
+- **render_plantuml SVG 暗色主题下不可读（背景透明）**
+  - 根因：PlantUML 通过 SVG 根元素 CSS `background` 设置白底，librsvg（Emacs image-mode 渲染器）不支持该属性，实际渲染为透明背景，暗色主题下黑字不可读
+  - 修复：工具新增可选 `background` 参数（十六进制色值，如 '#ffffff'），渲染后注入标准 `<rect width="100%" height="100%" fill="..."/>` 背景元素（所有渲染器兼容）
+  - 调用时传 `background:"#ffffff"` 保证暗色主题可读；传 `'none'` 或不传保持透明背景（向后兼容）
+  - hooks/rules.md 画图规则已更新，要求 agent 调用 render_plantuml 时默认传 `background:"#ffffff"`
+
 ## [0.6.0] — 2026-08-02
 
 ### 重构

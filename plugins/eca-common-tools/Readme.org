@@ -6,7 +6,7 @@
 
   这是一个 ECA (Emacs Code Assistant) 插件，通过一个 MCP 服务器提供多个工具：
 
-  - =render_plantuml= — 将 PlantUML 源码渲染为 SVG 无损矢量图片（base64 内联）
+  - =render_plantuml= — 将 PlantUML 源码渲染为 SVG 无损矢量图片（base64 内联），支持 =background= 背景色参数（暗色主题可读）
   - =pandoc_convert= — 文档格式转换（Markdown ↔ Org ↔ HTML ↔ LaTeX ↔ DOCX 等）
   - =pandoc_list_formats= — 列出 pandoc 支持的全部输入/输出格式
 
@@ -27,6 +27,11 @@
   服务器 plantuml --http-server:18080，源码经 encodeurl 编码后 GET /svg/<encoded>，
   耗时约 16ms；HTTP 不可用时回退 plantuml -pipe -tsvg）
   → base64 SVG data URI 返回给 LLM → 嵌入回复展示。
+
+  背景处理：PlantUML 通过 SVG 根元素 CSS background 设置背景，但 librsvg（Emacs image-mode
+  渲染器）不支持该属性，暗色主题下实际渲染为透明背景、黑字不可读。render_plantuml 支持
+  background 参数（十六进制色值，如 '#ffffff'），渲染后注入标准 <rect> 背景元素（librsvg
+  兼容），调用时传 background:"#ffffff" 保证暗色主题可读；传 "none" 或不传保持透明。
 
   =pandoc_convert= 转换链路：
 

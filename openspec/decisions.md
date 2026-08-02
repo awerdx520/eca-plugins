@@ -106,3 +106,13 @@
 - 删除 plugins/plantuml-render/ 与 plugins/pandoc-convert/ 旧目录
 - marketplace.json 注册 eca-common-tools（同时补齐 pandoc-convert 此前遗漏的注册问题——统一为单一插件后不再有遗漏）
 - README.md、CHANGELOG.md 更新；用户 config.json 中 install 需改为 ["eca-common-tools"]
+
+## 2026-08-02 — render_plantuml 增加 background 参数修复暗色主题可读性
+
+**决策**：render_plantuml 工具增加可选 background 参数（十六进制色值，如 '#ffffff'），agent 调用时显式传背景色；插件在渲染输出的 SVG 中注入标准 <rect width="100%" height="100%" fill="..."/> 背景元素。默认不注入（保持透明向后兼容），'none' 或不传不注入。
+
+**理由**：
+- PlantUML 通过 SVG 根元素 CSS `style="background:#FFFFFF"` 设置白底，但 librsvg（Emacs image-mode 渲染器）不支持 SVG 根元素 CSS background 属性，实测渲染为全透明背景（alpha 均值 0.407）
+- 暗色主题下透明背景 + 黑色字体不可读
+- 注入标准 <rect> 背景元素为 SVG 规范标准，所有渲染器支持（实测注入后角落像素 srgb(255,255,255)、alpha 均值 1.0）
+- 采用「默认不注入 + agent 显式传参」而非默认注入：保持向后兼容；hooks/rules.md 指引 agent 调用时默认传 background:"#ffffff" 保证可读

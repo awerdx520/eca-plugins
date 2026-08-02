@@ -20,6 +20,11 @@ export const plantumlTools = [
           description:
             "完整的 PlantUML 源码，以 @startuml 开头、@enduml 结尾。",
         },
+        background: {
+          type: "string",
+          description:
+            "可选。SVG 背景色（十六进制，如 '#ffffff'）。暗色主题下建议传 '#ffffff' 保证可读；传 'none' 或不传则保持透明背景。",
+        },
       },
       required: ["source"],
     },
@@ -178,15 +183,37 @@ function renderViaCli(source) {
   });
 }
 
+// ============ SVG 背景后处理 ============
+// PlantUML 通过 SVG 根元素 CSS background 设置白底，但 librsvg（Emacs image-mode 渲染器）
+// 不支持该 CSS 属性，导致实际渲染为透明背景（暗色主题下黑字不可读）。
+// 方案：注入标准 <rect> 背景元素（所有渲染器支持），作为 svg 首个子元素（最底层）。
+const SVG_BACKGROUND_RE = /^#[0-9a-fA-F]{3,8}$/;
+
 /**
- * 渲染 PlantUML 源码为 SVG（优先 HTTP，回退 CLI）
+ * 在 SVG 中注入背景矩形。background 为合法十六进制色值才注入；
+ * 'none' / 非法值 / 缺省 → 不注入（保持透明，向后兼容）。
  */
-async function renderPlantuml(source) {
+function applySvgBackground(svgText, background) {
+  if (!background || background === "none" || !SVG_BACKGROUND_RE.test(background)) {
+    return svgText;
+  }
+  const rect = `<rect width="100%" height="100%" fill="${background}"/>`;
+  return svgText.replace(/<svg[^>]*>/, (m) => m + rect);
+}
+
+/**
+ * 渲染 PlantUML 源码为 SVG（优先 HTTP，回退 CLI）。
+ * background：可选背景色（十六进制），见 applySvgBackground。
+ */
+async function renderPlantuml(source, background) {
   // 尝试 HTTP 模式（常驻服务器复用 JVM）
   if (httpReady) {
     try {
       const result = await renderViaHttp(source);
-      if (result.success) return result;
+      if (result.success) {
+        result.svgText = applySvgBackground(result.svgText, background);
+        return result;
+      }
       // HTTP 返回错误（如语法错误 400），直接返回错误而非回退 CLI
       return result;
     } catch {
@@ -200,7 +227,11 @@ async function renderPlantuml(source) {
   }
 
   // 回退 CLI 模式
-  return await renderViaCli(source);
+  const result = await renderViaCli(source);
+  if (result.success) {
+    result.svgText = applySvgBackground(result.svgText, background);
+  }
+  return result;
 }
 
 // ============ 生命周期清理 ============
@@ -229,7 +260,8 @@ export async function handlePlantumlCall(name, args) {
     };
   }
 
-  const result = await renderPlantuml(source);
+  const background = args?.background;
+  const result = await renderPlantuml(source, background);
 
   if (result.success) {
     return {
