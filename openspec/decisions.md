@@ -53,3 +53,39 @@
 - 新增 5 个文件（eca.json、.mcp.json、package.json、src/index.mjs、Readme.org）
 - 更新 README.md 插件表格和 CHANGELOG.md
 - 无需 hooks/ 目录（纯工具型插件）
+
+---
+
+## 2026-08-02 — render_plantuml 输出格式切换：PNG 位图 → SVG 无损矢量
+
+**决策**：render_plantuml MCP 工具的输出格式从 PNG 位图切换为 SVG 无损矢量，渲染命令从 `plantuml -tpng <临时文件>` 改为 `plantuml -pipe -tsvg`（stdin 传源码、stdout 收 SVG），MCP image content 的 mimeType 改为 `image/svg+xml`。
+
+**理由**：
+- SVG 是无损矢量格式，可无限缩放、文字可选中复制，作为文档配图质量远优于位图 PNG
+- 复杂图（多节点+长文字）SVG base64 体积比 PNG 小约 50%（实测 7816B vs 15684B）
+- `-pipe` 模式消除临时文件 write→spawn→read→unlink 往返，同时避免 shell 注入面
+- 语法错误检测保持有效：plantuml 对无法解析的输入返回退出码 100，`code !== 0` 仍可捕获
+
+**影响**：
+- 修改 `src/index.mjs`（渲染命令、mimeType、移除临时文件相关 import）
+- 同步更新 hooks/rules.md、Readme.org、eca.json、package.json、README.md、CHANGELOG.md
+- 客户端需支持 `image/svg+xml` MCP image 内容渲染（Emacs image-mode 支持 SVG）
+- JVM 冷启动瓶颈（~470ms）未在本次处理，已记入 tech-debt.md
+
+---
+
+## 2026-08-02 — render_plantuml 引入常驻 HTTP 服务器消除 JVM 冷启动
+
+**决策**：render_plantuml 渲染路径从纯 CLI（`plantuml -pipe -tsvg`，每次冷启动 JVM ~470ms）升级为「常驻 HTTP 服务器优先 + CLI 回退」双通道。MCP 服务器启动时拉起 `plantuml --http-server:18080` 常驻进程，渲染走 `GET /svg/<encoded>`（源码经 PlantUML 官方 encodeurl 算法：deflateRawSync + 自定义 base64 字母表），HTTP 不可用时回退 CLI。
+
+**理由**：
+- 高频率使用场景下，每次渲染冷启动 JVM 是主要瓶颈（~470ms），常驻服务器将耗时降至 ~16ms（约 30 倍提升，实测 avg=16ms / min 13 / max 22）
+- 语法错误 HTTP 返回 400 + 错误提示 SVG，比 CLI 退出码 100 更精确，且直接返回错误不触发冷启动
+- 双通道设计保证渲染功能永不中断：端口占用、服务器崩溃均自动回退 CLI
+- 编码走 URL 路径（GET）而非 raw body（POST /svg 实测返回 PNG 错误图，不可用）
+
+**影响**：
+- `src/index.mjs` 增加编码函数（encodePlantUML）、生命周期管理（ensureHttpServer + cleanup）、双通道渲染（renderViaHttp + renderViaCli）
+- 端口固定 18080；MCP 退出时自动 kill http-server 进程
+- 依赖 Node 原生 fetch（Node 18+）与 zlib
+- 文档同步：Readme.org、CHANGELOG.md；tech-debt.md 中 JVM 冷启动条目标记已解决

@@ -1,5 +1,28 @@
 # 变更日志
 
+## [0.5.0] — 2026-08-02
+
+### 新增
+
+- **常驻 HTTP 服务器模式，消除 JVM 冷启动瓶颈**
+  - MCP 服务器启动时拉起 `plantuml --http-server:18080` 常驻进程，JVM 只启动一次
+  - 渲染走 `GET /svg/<encoded>`（源码经 PlantUML 官方 encodeurl 算法编码），耗时从 ~470ms 降至 ~16ms（约 30 倍提升）
+  - HTTP 不可用（端口占用/服务器崩溃）时自动回退 `plantuml -pipe -tsvg` CLI 模式，渲染功能永不中断
+  - 语法错误（HTTP 400）直接返回错误，不触发 CLI 冷启动
+  - MCP 退出时自动清理 http-server 进程，无僵尸进程
+
+## [0.4.0] — 2026-08-02
+
+### 变更
+
+- **render_plantuml 输出格式：PNG 位图 → SVG 无损矢量**
+  - 渲染命令从 `plantuml -tpng <临时文件>` 改为 `plantuml -pipe -tsvg`（stdin 传源码、stdout 收 SVG），消除临时文件往返
+  - MCP image content 的 mimeType 改为 `image/svg+xml`，返回 `data:image/svg+xml;base64,...`
+  - SVG 无损矢量：可无限缩放、文字可选中复制；复杂图 base64 体积比 PNG 小约 50%
+  - 语法错误检测保持有效（plantuml 退出码 100，`code !== 0` 仍捕获）
+  - 同步更新 hooks/rules.md、Readme.org、eca.json、package.json、README.md 中的 PNG 描述
+  - 已知瓶颈：每次渲染 JVM 冷启动约 470ms，已记入 openspec/tech-debt.md
+
 ## [0.3.0] — 2026-07-15
 
 ### 新增

@@ -5,7 +5,7 @@
 * 概述
 
   这是一个 ECA (Emacs Code Assistant) 插件，通过 MCP 服务器提供 =render_plantuml=
-  工具，将 PlantUML 源码渲染为 PNG 图片（base64 内联），在客户端直接显示。
+  工具，将 PlantUML 源码渲染为 SVG 图片（无损矢量格式，base64 内联），在客户端直接显示。
 
   采用 *二层架构* ：
 
@@ -15,8 +15,10 @@
 * 工作原理
 
   PlantUML 源码 → pre-request hook 注入画图规则 → LLM 输出 @startuml 块
-  → LLM 调用 render_plantuml 工具 → MCP 服务器执行 plantuml -tpng
-  → base64 PNG data URI 返回给 LLM → 嵌入回复展示。
+  → LLM 调用 render_plantuml 工具 → MCP 服务器执行渲染（优先常驻 HTTP
+  服务器 plantuml --http-server:18080，源码经 encodeurl 编码后 GET /svg/<encoded>，
+  耗时约 16ms；HTTP 不可用时回退 plantuml -pipe -tsvg）
+  → base64 SVG data URI 返回给 LLM → 嵌入回复展示。
 
   采用 *二层架构* ：
 
@@ -76,6 +78,7 @@
 * 配置
 
   暂无外部配置项。所有行为由 Hook 脚本控制。
+  常驻 HTTP 服务器端口固定为 18080；被占用时自动回退 CLI 模式。
 
 * 故障排查
 

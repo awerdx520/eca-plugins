@@ -1,5 +1,5 @@
 {
   "name": "plantuml-render",
   "version": "0.1.0",
-  "description": "提供 render_plantuml MCP 工具，将 PlantUML 源码渲染为 PNG 图片（base64 内联）。pre-request hook 注入画图规则，模型主动调用工具完成渲染。"
+  "description": "提供 render_plantuml MCP 工具，将 PlantUML 源码渲染为 SVG 图片（无损矢量，base64 内联）。pre-request hook 注入画图规则，模型主动调用工具完成渲染。"
 }

@@ -42,7 +42,7 @@
 ### 输出后处理
 
 输出 `@startuml...@enduml` 代码块后，**调用 `render_plantuml` 工具**渲染为图片。
-工具接受 `source` 参数（完整的 PlantUML 源码），返回 PNG 图片。
+工具接受 `source` 参数（完整的 PlantUML 源码），返回 SVG 图片（无损矢量格式，可无限缩放）。
 图片由客户端自动渲染展示，无需在回复中手动嵌入 data URI。
 
 ---

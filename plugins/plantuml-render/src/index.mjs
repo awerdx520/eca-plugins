@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 // PlantUML 渲染 MCP 服务器
-// 提供 render_plantuml 工具：接受 PlantUML 源码，渲染为 PNG，返回 base64 data URI
+// 提供 render_plantuml 工具：接受 PlantUML 源码，渲染为 SVG（无损矢量），返回 base64 data URI
+// 性能优化：优先使用常驻 HTTP 服务器（plantuml --http-server）复用 JVM（~16ms），失败回退 CLI（-pipe -tsvg）
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -10,17 +11,14 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { spawn } from "node:child_process";
-import { writeFile, readFile, unlink, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { deflateRawSync } from "node:zlib";
 
 const TOOL_NAME = "render_plantuml";
 
 const TOOL_DEFINITION = {
   name: TOOL_NAME,
   description:
-    "渲染 PlantUML 源码为 PNG 图片。输入完整的 @startuml...@enduml 源码，返回 base64 PNG data URI。语法错误时返回错误信息。",
+    "渲染 PlantUML 源码为 SVG 图片（无损矢量格式，可无限缩放）。输入完整的 @startuml...@enduml 源码，返回 base64 SVG data URI。语法错误时返回错误信息。",
   inputSchema: {
     type: "object",
     properties: {
@@ -34,72 +32,197 @@ const TOOL_DEFINITION = {
   },
 };
 
-/**
- * 渲染 PlantUML 源码为 PNG base64
- * 通过临时文件传递源码，避免 shell 注入风险
- */
-async function renderPlantuml(source) {
-  const tmpDir = join(tmpdir(), "eca-plantuml");
-  await mkdir(tmpDir, { recursive: true });
+// ============ PlantUML 官方 encodeurl 编码 ============
+// 源码 → deflateRaw 压缩 → 自定义 base64（字母表与 PlantUML 一致）
+const CODE6 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
 
-  const id = randomUUID();
-  const pumlPath = join(tmpDir, `${id}.puml`);
-  const pngPath = join(tmpDir, `${id}.png`);
-
-  try {
-    // 写入临时文件
-    await writeFile(pumlPath, source, "utf-8");
-
-    // 调用 plantuml CLI 渲染
-    return await new Promise((resolve, reject) => {
-      const proc = spawn("plantuml", ["-tpng", pumlPath], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let stderr = "";
-      proc.stderr.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      proc.on("close", async (code) => {
-        if (code !== 0) {
-          resolve({
-            success: false,
-            error: stderr.trim() || `plantuml 退出码 ${code}`,
-          });
-          return;
-        }
-
-        try {
-          const pngData = await readFile(pngPath);
-          const base64 = pngData.toString("base64");
-          resolve({
-            success: true,
-            dataUri: `data:image/png;base64,${base64}`,
-          });
-        } catch (err) {
-          resolve({
-            success: false,
-            error: `读取 PNG 失败: ${err.message}`,
-          });
-        }
-      });
-
-      proc.on("error", (err) => {
-        resolve({
-          success: false,
-          error: `plantuml 执行失败: ${err.message}`,
-        });
-      });
-    });
-  } finally {
-    // 清理临时文件
-    await unlink(pumlPath).catch(() => {});
-    await unlink(pngPath).catch(() => {});
-  }
+function encode6bit(b) {
+  return CODE6.charAt(b & 0x3f);
 }
 
-// 创建 MCP 服务器
+function append3bytes(b1, b2, b3) {
+  const c1 = b1 >> 2;
+  const c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
+  const c3 = ((b2 & 0xf) << 2) | (b3 >> 6);
+  const c4 = b3 & 0x3f;
+  return encode6bit(c1) + encode6bit(c2) + encode6bit(c3) + encode6bit(c4);
+}
+
+function encode64(data) {
+  let r = "";
+  for (let i = 0; i < data.length; i += 3) {
+    if (i + 2 === data.length) r += append3bytes(data[i], data[i + 1], 0);
+    else if (i + 1 === data.length) r += append3bytes(data[i], 0, 0);
+    else r += append3bytes(data[i], data[i + 1], data[i + 2]);
+  }
+  return r;
+}
+
+function encodePlantUML(source) {
+  return encode64(deflateRawSync(Buffer.from(source, "utf-8")));
+}
+
+// ============ 常驻 HTTP 服务器生命周期 ============
+const HTTP_PORT = 18080;
+const HTTP_BASE = `http://localhost:${HTTP_PORT}`;
+let httpServer = null; // spawn 的 http-server 子进程
+let httpReady = false; // 端口是否已就绪
+let httpStarting = false; // 是否正在启动中（防重复拉起）
+
+/**
+ * 启动常驻 plantuml http-server（JVM 只启动一次）
+ * 异步轮询端口就绪，不阻塞 MCP 握手
+ */
+async function ensureHttpServer() {
+  if (httpReady || httpStarting) return;
+  httpStarting = true;
+
+  try {
+    // 检查端口是否已被其他 plantuml 服务器占用（多实例复用）
+    const probe = await fetch(`${HTTP_BASE}/`, { signal: AbortSignal.timeout(1000) });
+    if (probe.ok) {
+      httpReady = true;
+      return;
+    }
+  } catch {
+    // 端口未占用，继续启动
+  }
+
+  httpServer = spawn("plantuml", ["--http-server:" + String(HTTP_PORT)], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  httpServer.stderr.on("data", () => {}); // 静默吞掉日志
+  httpServer.on("exit", () => {
+    httpReady = false;
+    httpServer = null;
+  });
+
+  // 轮询端口就绪（最长 10 秒）
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    try {
+      const probe = await fetch(`${HTTP_BASE}/`, { signal: AbortSignal.timeout(500) });
+      if (probe.ok) {
+        httpReady = true;
+        return;
+      }
+    } catch {
+      // 未就绪，继续等
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  // 超时：回退 CLI，不抛出
+  httpReady = false;
+}
+
+/**
+ * 通过 HTTP 渲染（GET /svg/<encoded>）
+ */
+async function renderViaHttp(source) {
+  const encoded = encodePlantUML(source);
+  const resp = await fetch(`${HTTP_BASE}/svg/${encoded}`, {
+    signal: AbortSignal.timeout(15000),
+  });
+  const buf = Buffer.from(await resp.arrayBuffer());
+  if (resp.status !== 200) {
+    return {
+      success: false,
+      error: `PlantUML 渲染错误 (HTTP ${resp.status})`,
+    };
+  }
+  return {
+    success: true,
+    svgText: buf.toString("utf-8"),
+  };
+}
+
+/**
+ * 通过 CLI 渲染（-pipe -tsvg），作为 HTTP 模式的回退
+ */
+function renderViaCli(source) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("plantuml", ["-pipe", "-tsvg"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString("utf-8");
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on("error", (err) => {
+      resolve({
+        success: false,
+        error: `plantuml 执行失败: ${err.message}`,
+      });
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        resolve({
+          success: false,
+          error: stderr.trim() || `plantuml 退出码 ${code}`,
+        });
+        return;
+      }
+      if (!stdout.trim()) {
+        resolve({
+          success: false,
+          error: "plantuml 未输出 SVG 内容",
+        });
+        return;
+      }
+      resolve({ success: true, svgText: stdout });
+    });
+
+    proc.stdin.write(source, "utf-8");
+    proc.stdin.end();
+  });
+}
+
+/**
+ * 渲染 PlantUML 源码为 SVG（优先 HTTP，回退 CLI）
+ */
+async function renderPlantuml(source) {
+  // 尝试 HTTP 模式（常驻服务器复用 JVM）
+  if (httpReady) {
+    try {
+      const result = await renderViaHttp(source);
+      if (result.success) return result;
+      // HTTP 返回错误（如语法错误 400），直接返回错误而非回退 CLI
+      return result;
+    } catch {
+      // HTTP 请求失败（服务器崩溃等），标记不可用并回退 CLI
+      httpReady = false;
+      if (httpServer) {
+        httpServer.kill();
+        httpServer = null;
+      }
+    }
+  }
+
+  // 回退 CLI 模式
+  return await renderViaCli(source);
+}
+
+// ============ 生命周期清理 ============
+function cleanup() {
+  if (httpServer) {
+    httpServer.kill();
+    httpServer = null;
+  }
+  httpReady = false;
+  process.exit(0);
+}
+process.on("SIGINT", cleanup);
+process.on("SIGTERM", cleanup);
+process.on("exit", cleanup);
+
+// ============ MCP 服务器 ============
 const server = new Server(
   { name: "plantuml-render", version: "0.1.0" },
   { capabilities: { tools: {} } }
@@ -136,12 +259,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: "PlantUML 渲染成功。图片已通过 image 内容返回。",
+          text: "PlantUML 渲染成功。SVG 图片已通过 image 内容返回（无损矢量格式）。",
         },
         {
           type: "image",
-          data: result.dataUri.replace("data:image/png;base64,", ""),
-          mimeType: "image/png",
+          data: Buffer.from(result.svgText, "utf-8").toString("base64"),
+          mimeType: "image/svg+xml",
         },
       ],
     };
@@ -153,6 +276,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// 启动服务器
+// 启动 MCP 服务器，并异步拉起常驻 http-server
 const transport = new StdioServerTransport();
 await server.connect(transport);
+ensureHttpServer();
