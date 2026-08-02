@@ -1,5 +1,16 @@
 # 变更日志
 
+## [0.6.0] — 2026-08-02
+
+### 重构
+
+- **统一工具插件 eca-common-tools：合并碎片化 MCP 插件**
+  - plantuml-render（1 tool）与 pandoc-convert（2 tools）合并为统一插件 eca-common-tools，一个 MCP 服务器进程包含全部 3 个工具
+  - 模块化架构：src/plantuml.mjs（render_plantuml，含 HTTP 双通道 + 常驻服务器）、src/pandoc.mjs（pandoc_convert + pandoc_list_formats）、src/index.mjs（中央注册表聚合 TOOLS + HANDLERS 分发）
+  - pre-request hook（画图规则注入）迁移至统一插件 hooks/
+  - 删除旧插件目录 plugins/plantuml-render/ 与 plugins/pandoc-convert/
+  - 未来新增工具 = 新建 src/*.mjs 模块 + index.mjs 注册两行，不再新增 MCP 进程
+
 ## [0.5.0] — 2026-08-02
 
 ### 新增

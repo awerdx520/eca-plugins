@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "pandoc-convert": {
+    "eca-common-tools": {
       "command": "node",
       "args": ["${plugin:root}/src/index.mjs"]
     }

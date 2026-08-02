@@ -1,0 +1,74 @@
+#+TITLE: ECA 统一工具集插件
+#+AUTHOR: ECA Plugin System
+#+DATE: 2026-08-02
+
+* 概述
+
+  这是一个 ECA (Emacs Code Assistant) 插件，通过一个 MCP 服务器提供多个工具：
+
+  - =render_plantuml= — 将 PlantUML 源码渲染为 SVG 无损矢量图片（base64 内联）
+  - =pandoc_convert= — 文档格式转换（Markdown ↔ Org ↔ HTML ↔ LaTeX ↔ DOCX 等）
+  - =pandoc_list_formats= — 列出 pandoc 支持的全部输入/输出格式
+
+  采用 *统一 MCP 服务器 + 模块化工具* 架构：一个 MCP 进程包含全部工具，
+  未来新增工具只需添加模块文件并在 src/index.mjs 注册，无需新增 MCP 服务器。
+
+  采用 *二层架构*：
+
+  1. =L1 preRequest Hook= — 每次 LLM 请求前自动注入画图规则（PlantUML 语法、禁止行为、自检清单）
+  2. =MCP 服务器= — 提供三个工具，模型输出 =@startuml= 块或需要文档转换时主动调用
+
+* 工作原理
+
+  =render_plantuml= 渲染链路：
+
+  PlantUML 源码 → pre-request hook 注入画图规则 → LLM 输出 @startuml 块
+  → LLM 调用 render_plantuml 工具 → MCP 服务器执行渲染（优先常驻 HTTP
+  服务器 plantuml --http-server:18080，源码经 encodeurl 编码后 GET /svg/<encoded>，
+  耗时约 16ms；HTTP 不可用时回退 plantuml -pipe -tsvg）
+  → base64 SVG data URI 返回给 LLM → 嵌入回复展示。
+
+  =pandoc_convert= 转换链路：
+
+  源文本 → LLM 调用 pandoc_convert 工具 → MCP 服务器通过临时文件调用 pandoc CLI
+  → 返回转换后文本 → LLM 嵌入回复。
+
+* 项目结构
+
+  #+BEGIN_SRC text
+  eca-common-tools/
+  ├── eca.json           # 插件元数据
+  ├── .mcp.json          # MCP 服务器声明（统一服务器）
+  ├── package.json       # Node.js 依赖声明
+  ├── hooks/             # pre-request hook（画图规则注入）
+  │   ├── hooks.json
+  │   ├── pre-request.sh
+  │   └── rules.md
+  ├── src/
+  │   ├── index.mjs      # MCP 服务器实现（工具注册表 + 分发）
+  │   ├── plantuml.mjs   # render_plantuml 实现（HTTP 双通道）
+  │   └── pandoc.mjs     # pandoc_convert + pandoc_list_formats 实现
+  └── Readme.org         # 本文件
+  #+END_SRC
+
+* 配置
+
+  常驻 HTTP 服务器端口固定为 18080；被占用时自动回退 CLI 模式。
+
+* 依赖
+
+  - ~plantuml~ CLI（需要 Java 运行环境）— 用于 render_plantuml
+  - ~pandoc~ CLI — 用于文档格式转换
+  - Node.js 运行时
+
+* 开发
+
+  测试 MCP 服务器：
+
+  #+BEGIN_SRC bash
+  npm install && node src/index.mjs
+  #+END_SRC
+
+* 许可证
+
+  MIT

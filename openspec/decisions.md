@@ -89,3 +89,20 @@
 - 端口固定 18080；MCP 退出时自动 kill http-server 进程
 - 依赖 Node 原生 fetch（Node 18+）与 zlib
 - 文档同步：Readme.org、CHANGELOG.md；tech-debt.md 中 JVM 冷启动条目标记已解决
+
+---
+
+## 2026-08-02 — 统一工具插件 eca-common-tools：合并碎片化 MCP 插件
+
+**决策**：将 plantuml-render（1 tool）与 pandoc-convert（2 tools）两个碎片化插件合并为统一插件 `eca-common-tools`，一个 MCP 服务器进程包含全部工具。采用模块化架构：`src/index.mjs` 为中央注册表（TOOLS 聚合 + HANDLERS 分发），每个工具组一个模块文件（`src/plantuml.mjs`、`src/pandoc.mjs`）。
+
+**理由**：
+- 原架构下每个插件 = 一个独立 MCP 服务器进程，新增简单工具就要新增插件 + 进程，功能碎片化、进程膨胀、管理分散
+- 模块化架构支持未来低成本扩展：新增工具 = 新建 src/*.mjs 模块 + index.mjs 注册两行，不新增 MCP 进程
+- 保留全部既有功能：render_plantuml 的 HTTP 双通道 + 常驻服务器、pandoc 的临时文件安全机制、pre-request hook 画图规则注入
+
+**影响**：
+- 新建 plugins/eca-common-tools/（eca.json、.mcp.json、package.json、hooks/、src/、Readme.org）
+- 删除 plugins/plantuml-render/ 与 plugins/pandoc-convert/ 旧目录
+- marketplace.json 注册 eca-common-tools（同时补齐 pandoc-convert 此前遗漏的注册问题——统一为单一插件后不再有遗漏）
+- README.md、CHANGELOG.md 更新；用户 config.json 中 install 需改为 ["eca-common-tools"]

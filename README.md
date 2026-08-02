@@ -1,13 +1,12 @@
-# ECA PlantUML 插件仓库
+# ECA 插件仓库
 
-PlantUML 渲染插件集，为 ECA（Editor Code Assistant）提供 PlantUML 图形的自动渲染能力。
+ECA（Editor Code Assistant）插件集，提供统一的工具能力：PlantUML 图形渲染（SVG 无损矢量）、文档格式转换等。
 
 ## 已收录插件
 
 | 插件 | 版本 | 说明 |
 |------|------|------|
-| [plantuml-render](./plugins/plantuml-render/Readme.org) | 0.1.0 | 自动将对话中的 PlantUML 源码渲染为 SVG 无损矢量图片（base64 内联），在 ECA 客户端直接显示图形 |
-| [pandoc-convert](./plugins/pandoc-convert/Readme.org) | 0.1.0 | 通过 pandoc 实现文档格式互转（Markdown、Org、HTML、LaTeX、DOCX 等），提供 pandoc_convert 和 pandoc_list_formats MCP 工具 |
+| [eca-common-tools](./plugins/eca-common-tools/Readme.org) | 0.1.0 | 统一工具集：render_plantuml（PlantUML SVG 无损渲染）、pandoc_convert 与 pandoc_list_formats（文档格式转换），一个 MCP 服务器包含全部工具 |
 
 ## 安装
 
@@ -19,7 +18,7 @@ PlantUML 渲染插件集，为 ECA（Editor Code Assistant）提供 PlantUML 图
     "plantuml": {
       "source": "https://github.com/thomas/eca-plugins.git"
     },
-    "install": ["plantuml-render"]
+    "install": ["eca-common-tools"]
   }
 }
 ```
@@ -32,7 +31,7 @@ PlantUML 渲染插件集，为 ECA（Editor Code Assistant）提供 PlantUML 图
     "local-dev": {
       "source": "/home/thomas/Workspace/eca-plugins"
     },
-    "install": ["plantuml-render"]
+    "install": ["eca-common-tools"]
   }
 }
 ```
@@ -46,7 +45,7 @@ eca-plugins/
 ├── .eca-plugin/
 │   └── marketplace.json       # 插件市场注册
 ├── plugins/
-│   └── plantuml-render/       # plantuml-render 插件
+│   └── eca-common-tools/      # eca-common-tools 插件
 │       ├── eca.json           # 插件元数据
 │       ├── .mcp.json          # MCP 服务器注册
 │       ├── hooks/             # pre-request + post-request

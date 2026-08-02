@@ -1,14 +1,7 @@
-#!/usr/bin/env node
+// Pandoc 文档转换工具模块（eca-common-tools）
+// 提供 pandoc_convert 与 pandoc_list_formats 两个工具
+// 导出 pandocTools 工具定义数组与 handlePandocCall 调用分发函数，供 index.mjs 聚合
 
-// Pandoc 文档转换 MCP 服务器
-// 提供 pandoc_convert 和 pandoc_list_formats 工具
-
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import { spawn } from "node:child_process";
 import { writeFile, readFile, unlink, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -17,7 +10,7 @@ import { randomUUID } from "node:crypto";
 
 // ── 工具定义 ──
 
-const TOOLS = [
+export const pandocTools = [
   {
     name: "pandoc_convert",
     description:
@@ -165,22 +158,14 @@ async function listFormats() {
   }
 }
 
-// ── MCP 服务器 ──
+// ── 工具调用分发 ──
 
-const server = new Server(
-  { name: "pandoc-convert", version: "0.1.0" },
-  { capabilities: { tools: {} } }
-);
-
-// 工具列表
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS,
-}));
-
-// 工具调用分发
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
+/**
+ * 分发 pandoc 相关工具调用，返回 MCP CallToolResult 形状
+ * @param {string} name 工具名
+ * @param {object} args 工具参数
+ */
+export async function handlePandocCall(name, args) {
   switch (name) {
     case "pandoc_convert": {
       const { content, from, to, options } = args || {};
@@ -246,8 +231,4 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         isError: true,
       };
   }
-});
-
-// 启动
-const transport = new StdioServerTransport();
-await server.connect(transport);
+}

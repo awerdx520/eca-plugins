@@ -1,36 +1,30 @@
-#!/usr/bin/env node
-
-// PlantUML 渲染 MCP 服务器
+// PlantUML 渲染工具模块（eca-common-tools）
 // 提供 render_plantuml 工具：接受 PlantUML 源码，渲染为 SVG（无损矢量），返回 base64 data URI
 // 性能优化：优先使用常驻 HTTP 服务器（plantuml --http-server）复用 JVM（~16ms），失败回退 CLI（-pipe -tsvg）
+// 模块化约定：只导出工具定义、生命周期函数与调用分发函数；MCP 协议由 index.mjs 负责
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import { spawn } from "node:child_process";
 import { deflateRawSync } from "node:zlib";
 
-const TOOL_NAME = "render_plantuml";
-
-const TOOL_DEFINITION = {
-  name: TOOL_NAME,
-  description:
-    "渲染 PlantUML 源码为 SVG 图片（无损矢量格式，可无限缩放）。输入完整的 @startuml...@enduml 源码，返回 base64 SVG data URI。语法错误时返回错误信息。",
-  inputSchema: {
-    type: "object",
-    properties: {
-      source: {
-        type: "string",
-        description:
-          "完整的 PlantUML 源码，以 @startuml 开头、@enduml 结尾。",
+// ============ 工具定义 ============
+export const plantumlTools = [
+  {
+    name: "render_plantuml",
+    description:
+      "渲染 PlantUML 源码为 SVG 图片（无损矢量格式，可无限缩放）。输入完整的 @startuml...@enduml 源码，返回 base64 SVG data URI。语法错误时返回错误信息。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          description:
+            "完整的 PlantUML 源码，以 @startuml 开头、@enduml 结尾。",
+        },
       },
+      required: ["source"],
     },
-    required: ["source"],
   },
-};
+];
 
 // ============ PlantUML 官方 encodeurl 编码 ============
 // 源码 → deflateRaw 压缩 → 自定义 base64（字母表与 PlantUML 一致）
@@ -62,7 +56,7 @@ function encodePlantUML(source) {
   return encode64(deflateRawSync(Buffer.from(source, "utf-8")));
 }
 
-// ============ 常驻 HTTP 服务器生命周期 ============
+// ============ 常驻 HTTP 服务器生命周期（模块私有状态） ============
 const HTTP_PORT = 18080;
 const HTTP_BASE = `http://localhost:${HTTP_PORT}`;
 let httpServer = null; // spawn 的 http-server 子进程
@@ -73,7 +67,7 @@ let httpStarting = false; // 是否正在启动中（防重复拉起）
  * 启动常驻 plantuml http-server（JVM 只启动一次）
  * 异步轮询端口就绪，不阻塞 MCP 握手
  */
-async function ensureHttpServer() {
+export async function ensurePlantumlHttpServer() {
   if (httpReady || httpStarting) return;
   httpStarting = true;
 
@@ -210,34 +204,17 @@ async function renderPlantuml(source) {
 }
 
 // ============ 生命周期清理 ============
-function cleanup() {
+export function cleanupPlantuml() {
   if (httpServer) {
     httpServer.kill();
     httpServer = null;
   }
   httpReady = false;
-  process.exit(0);
 }
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
-process.on("exit", cleanup);
 
-// ============ MCP 服务器 ============
-const server = new Server(
-  { name: "plantuml-render", version: "0.1.0" },
-  { capabilities: { tools: {} } }
-);
-
-// 注册工具列表
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [TOOL_DEFINITION],
-}));
-
-// 注册工具调用处理
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  if (name !== TOOL_NAME) {
+// ============ 工具调用分发 ============
+export async function handlePlantumlCall(name, args) {
+  if (name !== "render_plantuml") {
     return {
       content: [{ type: "text", text: `未知工具: ${name}` }],
       isError: true,
@@ -268,15 +245,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         },
       ],
     };
-  } else {
-    return {
-      content: [{ type: "text", text: `⚠️ PlantUML 渲染失败:\n${result.error}` }],
-      isError: true,
-    };
   }
-});
-
-// 启动 MCP 服务器，并异步拉起常驻 http-server
-const transport = new StdioServerTransport();
-await server.connect(transport);
-ensureHttpServer();
+  return {
+    content: [{ type: "text", text: `⚠️ PlantUML 渲染失败:\n${result.error}` }],
+    isError: true,
+  };
+}

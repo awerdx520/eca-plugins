@@ -16,3 +16,15 @@
 - [ ] 实现 HTTP 模式 + 回退到 CLI 模式（http-server 启动失败时）
 
 **解决记录（2026-08-02）**：已通过常驻 HTTP 服务器方案解决（见 openspec/decisions.md 2026-08-02 HTTP 常驻条目）。MCP 启动时拉起 `plantuml --http-server:18080`，渲染走 `GET /svg/<encoded>`，耗时从 ~470ms 降至 ~16ms（约 30 倍提升）。HTTP 不可用时回退 CLI 模式，功能不中断。三个待办 checkbox 全部完成。
+
+---
+
+## 2026-08-02 — 旧插件迁移遗留检查（plantuml-render / pandoc-convert）
+
+**状态**：✅ 已处理
+
+**背景**：统一插件 eca-common-tools 重构完成后，旧插件目录已删除。需要确认：
+- [x] plugins/plantuml-render/ 与 plugins/pandoc-convert/ 已删除
+- [x] marketplace.json 只注册 eca-common-tools
+- [x] pre-request hook 迁移至 eca-common-tools/hooks/
+- [x] 用户 config.json 的 plugins.install 需手动改为 ["eca-common-tools"]（仓库外操作，用户侧待办）

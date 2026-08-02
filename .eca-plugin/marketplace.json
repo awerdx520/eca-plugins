@@ -1,10 +1,10 @@
 {
   "plugins": [
     {
-      "name": "plantuml-render",
-      "description": "自动将对话中的 PlantUML 源码渲染为 SVG 无损矢量图片（base64 内联），在 ECA 客户端直接显示图形。",
+      "name": "eca-common-tools",
+      "description": "统一工具集：render_plantuml（SVG 无损渲染）、pandoc_convert 与 pandoc_list_formats（文档格式转换）。一个 MCP 服务器包含全部工具。",
       "version": "0.1.0",
-      "source": "plugins/plantuml-render"
+      "source": "plugins/eca-common-tools"
     }
   ]
 }

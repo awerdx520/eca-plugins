@@ -1,0 +1,5 @@
+{
+  "name": "eca-common-tools",
+  "version": "0.1.0",
+  "description": "统一工具集插件：提供 render_plantuml（SVG 无损渲染）、pandoc_convert 与 pandoc_list_formats（文档格式转换）MCP 工具。pre-request hook 注入画图规则，模型主动调用工具完成渲染。"
+}
