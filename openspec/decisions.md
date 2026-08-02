@@ -116,3 +116,13 @@
 - 暗色主题下透明背景 + 黑色字体不可读
 - 注入标准 <rect> 背景元素为 SVG 规范标准，所有渲染器支持（实测注入后角落像素 srgb(255,255,255)、alpha 均值 1.0）
 - 采用「默认不注入 + agent 显式传参」而非默认注入：保持向后兼容；hooks/rules.md 指引 agent 调用时默认传 background:"#ffffff" 保证可读
+
+---
+
+## 2026-08-02 — 新增 4 个通用工具验证中发现 PlantUML 宽容解析陷阱
+
+**决策**：新增工具（plantuml_validate/json_format/csv_to_markdown/regex_test）通过端到端冒烟验证（26/26），全部采用既有模块化架构（src/*.mjs + index.mjs 注册两行）。验证中发现：`@startuml\nAlice ->\n@enduml`（不完整时序消息）在 PlantUML 中实际合法——宽容解析会接受残缺源码，不能作为语法错误测试用例；真正语法错误需用未闭合方括号（如 `[Component`）构造。
+
+**理由**：
+- 验证用例选择直接影响冒烟测试有效性，已沉淀为经验教训（含 Node 22 的 JSON.parse 错误消息不再含 position 字段、V8 回溯限制需 ≥100 字符输入才触发超时等环境差异）
+- 该陷阱对后续任何 PlantUML 相关测试都有指导意义

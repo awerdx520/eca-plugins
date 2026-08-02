@@ -9,6 +9,10 @@
   - =render_plantuml= — 将 PlantUML 源码渲染为 SVG 无损矢量图片（base64 内联），支持 =background= 背景色参数（暗色主题可读）
   - =pandoc_convert= — 文档格式转换（Markdown ↔ Org ↔ HTML ↔ LaTeX ↔ DOCX 等）
   - =pandoc_list_formats= — 列出 pandoc 支持的全部输入/输出格式
+  - =plantuml_validate= — 仅校验 PlantUML 源码语法，不返回图片；复用渲染通道（HTTP 200/400）判断，失败回退 CLI
+  - =json_format= — JSON 格式化/压缩/排序，解析错误返回位置信息（纯 JS 零依赖）
+  - =csv_to_markdown= — CSV → Markdown 表格，支持引号包裹字段与自定义分隔符（纯 JS 零依赖）
+  - =regex_test= — 正则测试：pattern + flags + text → 匹配位置/捕获组；子进程隔离 + 2s 超时防灾难性回溯（纯 JS 零依赖）
 
   采用 *统一 MCP 服务器 + 模块化工具* 架构：一个 MCP 进程包含全部工具，
   未来新增工具只需添加模块文件并在 src/index.mjs 注册，无需新增 MCP 服务器。
@@ -16,7 +20,7 @@
   采用 *二层架构*：
 
   1. =L1 preRequest Hook= — 每次 LLM 请求前自动注入画图规则（PlantUML 语法、禁止行为、自检清单）
-  2. =MCP 服务器= — 提供三个工具，模型输出 =@startuml= 块或需要文档转换时主动调用
+  2. =MCP 服务器= — 提供七个工具，模型输出 =@startuml= 块或需要文档转换时主动调用
 
 * 工作原理
 
@@ -38,6 +42,9 @@
   源文本 → LLM 调用 pandoc_convert 工具 → MCP 服务器通过临时文件调用 pandoc CLI
   → 返回转换后文本 → LLM 嵌入回复。
 
+  新增 util 工具（json_format/csv_to_markdown/regex_test）为纯 JS 实现，不依赖外部
+  CLI；regex_test 通过子进程执行正则并超时 kill 防 ReDoS。
+
 * 项目结构
 
   #+BEGIN_SRC text
@@ -52,7 +59,8 @@
   ├── src/
   │   ├── index.mjs      # MCP 服务器实现（工具注册表 + 分发）
   │   ├── plantuml.mjs   # render_plantuml 实现（HTTP 双通道）
-  │   └── pandoc.mjs     # pandoc_convert + pandoc_list_formats 实现
+  │   ├── pandoc.mjs     # pandoc_convert + pandoc_list_formats 实现
+  │   └── util.mjs       # json_format / csv_to_markdown / regex_test 实现
   └── Readme.org         # 本文件
   #+END_SRC
 

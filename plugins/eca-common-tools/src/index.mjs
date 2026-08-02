@@ -20,15 +20,23 @@ import {
   pandocTools,
   handlePandocCall,
 } from "./pandoc.mjs";
+import {
+  utilTools,
+  handleUtilCall,
+} from "./util.mjs";
 
 // ============ 工具注册表（聚合所有工具定义） ============
-const ALL_TOOLS = [...plantumlTools, ...pandocTools];
+const ALL_TOOLS = [...plantumlTools, ...pandocTools, ...utilTools];
 
 // ============ 工具分发器（按工具名路由到对应模块处理器） ============
 const HANDLERS = {
   render_plantuml: handlePlantumlCall,
+  plantuml_validate: handlePlantumlCall,
   pandoc_convert: handlePandocCall,
   pandoc_list_formats: handlePandocCall,
+  json_format: handleUtilCall,
+  csv_to_markdown: handleUtilCall,
+  regex_test: handleUtilCall,
 };
 
 // ============ MCP 服务器 ============

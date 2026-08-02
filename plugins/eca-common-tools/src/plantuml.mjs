@@ -29,6 +29,22 @@ export const plantumlTools = [
       required: ["source"],
     },
   },
+  {
+    name: "plantuml_validate",
+    description:
+      "仅校验 PlantUML 源码语法，不返回图片。传入完整的 @startuml...@enduml 源码，语法正确返回确认信息，语法错误返回错误详情。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          description:
+            "完整的 PlantUML 源码，以 @startuml 开头、@enduml 结尾。",
+        },
+      },
+      required: ["source"],
+    },
+  },
 ];
 
 // ============ PlantUML 官方 encodeurl 编码 ============
@@ -243,8 +259,100 @@ export function cleanupPlantuml() {
   httpReady = false;
 }
 
+// ============ PlantUML 语法校验 ============
+// 复用渲染通道判断语法：HTTP 200 → 合法；HTTP 400 → 语法错误（错误提示 SVG 中提取文本）；
+// HTTP 不可用时回退 CLI（-pipe -tsvg 退出码非 0 → 语法错误）。只返回文本结论，不返回图片。
+
+/** 从 PlantUML 错误提示 SVG 中提取错误文本（<text> 元素内容） */
+function extractErrorTextFromSvg(svgText) {
+  const texts = [];
+  const re = /<text[^>]*>([^<]*)<\/text>/g;
+  let m;
+  while ((m = re.exec(svgText)) !== null) {
+    const t = m[1].trim();
+    if (t) texts.push(t);
+  }
+  return texts.length > 0 ? texts.join(" ") : null;
+}
+
+/**
+ * 校验 PlantUML 源码语法（优先 HTTP，回退 CLI）。
+ * 返回 { success, message }；success=false 表示语法错误。
+ */
+async function validatePlantuml(source) {
+  // HTTP 模式：200 → 合法；400 → 语法错误
+  if (httpReady) {
+    try {
+      const encoded = encodePlantUML(source);
+      const resp = await fetch(`${HTTP_BASE}/svg/${encoded}`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (resp.status === 200) {
+        return { success: true, message: "PlantUML 语法正确" };
+      }
+      const svgText = Buffer.from(await resp.arrayBuffer()).toString("utf-8");
+      const errText = extractErrorTextFromSvg(svgText);
+      return {
+        success: false,
+        message: errText || `PlantUML 语法错误 (HTTP ${resp.status})`,
+      };
+    } catch {
+      // HTTP 请求失败（服务器崩溃等），标记不可用并回退 CLI
+      httpReady = false;
+      if (httpServer) {
+        httpServer.kill();
+        httpServer = null;
+      }
+    }
+  }
+
+  // 回退 CLI 模式：退出码非 0 → 语法错误
+  return new Promise((resolve) => {
+    const proc = spawn("plantuml", ["-pipe", "-tsvg"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stderr = "";
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+    proc.on("error", (err) => {
+      resolve({ success: false, message: `plantuml 执行失败: ${err.message}` });
+    });
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        resolve({
+          success: false,
+          message: stderr.trim() || `plantuml 语法错误（退出码 ${code}）`,
+        });
+        return;
+      }
+      resolve({ success: true, message: "PlantUML 语法正确" });
+    });
+    proc.stdin.write(source, "utf-8");
+    proc.stdin.end();
+  });
+}
+
 // ============ 工具调用分发 ============
 export async function handlePlantumlCall(name, args) {
+  if (name === "plantuml_validate") {
+    const source = args?.source;
+    if (!source || typeof source !== "string") {
+      return {
+        content: [{ type: "text", text: "缺少必需参数 source" }],
+        isError: true,
+      };
+    }
+    const result = await validatePlantuml(source);
+    if (result.success) {
+      return { content: [{ type: "text", text: `✅ ${result.message}` }] };
+    }
+    return {
+      content: [{ type: "text", text: `⚠️ ${result.message}` }],
+      isError: true,
+    };
+  }
+
   if (name !== "render_plantuml") {
     return {
       content: [{ type: "text", text: `未知工具: ${name}` }],

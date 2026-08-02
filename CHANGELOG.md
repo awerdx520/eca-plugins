@@ -1,5 +1,16 @@
 # 变更日志
 
+## [0.7.0] — 2026-08-02
+
+### 新增
+
+- **4 个通用工具加入 eca-common-tools**
+  - `plantuml_validate` — 仅校验 PlantUML 源码语法，不返回图片；复用渲染通道（HTTP 200 合法 / 400 语法错误并提取错误文本），HTTP 不可用时回退 CLI
+  - `json_format` — JSON 格式化/压缩/排序，解析错误返回位置信息（纯 JS 零依赖）
+  - `csv_to_markdown` — CSV → Markdown 表格，支持引号包裹字段（含逗号、换行、双引号转义）与自定义分隔符（纯 JS 零依赖）
+  - `regex_test` — 正则测试：pattern + flags + text → 匹配次数/位置/捕获组；子进程隔离 + 2 秒超时 kill 防灾难性回溯（纯 JS 零依赖）
+  - 工具总数 3 → 7，模块化架构验证扩展性：新增 src/util.mjs 模块 + index.mjs 注册两行即可
+
 ## [0.6.1] — 2026-08-02
 
 ### 修复
