@@ -376,7 +376,9 @@ export async function handlePlantumlCall(name, args) {
       content: [
         {
           type: "text",
-          text: "PlantUML 渲染成功。SVG 图片已通过 image 内容返回（无损矢量格式）。",
+          // 用普通字符串拼接而非模板字符串：source 为用户输入的 PlantUML 源码，
+          // 可能含 ${} 或反引号，模板字符串会触发 JS 插值导致错误
+          text: "PlantUML 源码：\n" + source,
         },
         {
           type: "image",
